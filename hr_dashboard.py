@@ -1,11 +1,13 @@
 
 import pandas as pd
+from db_utils import ensure_indexes
 import streamlit as st
 import plotly.express as px
 from pathlib import Path
 from io import BytesIO
 import sqlite3
 from pathlib import Path
+
 # -------------------------------
 # 1. Page configuration
 # -------------------------------
@@ -143,6 +145,7 @@ try:
                 if_exists="replace",
                 index=False
             )
+        ensure_indexes(conn)
 
         # Load data after all required tables exist
         df = pd.read_sql_query(
