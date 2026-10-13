@@ -1,0 +1,19 @@
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.streamlit/secrets.toml
+
+# Generated database and reports
+*.db
+*.sqlite
+*.sqlite3
+HR_Analytics_Final_Report.xlsx
+department_salary_report.csv
+high_salary_employees.csv
+joined_employee_report.csv
+department_join_summary.csv
+filtered_employee_data.csv
+employee_department_join.csv

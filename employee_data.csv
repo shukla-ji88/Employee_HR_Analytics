@@ -1,0 +1,21 @@
+EmployeeID,Name,Department,Position,Salary,ExperienceYears,PerformanceRating,JoiningDate
+101,Aarav,IT,Developer,55000,3,4,2022-01-15
+102,Priya,HR,HR Executive,35000,2,3,2023-03-10
+103,Rahul,Finance,Accountant,42000,4,4,2021-06-20
+104,Sneha,IT,Data Analyst,60000,3,5,2022-08-12
+105,Amit,Sales,Sales Executive,30000,1,3,2024-01-05
+106,Neha,HR,Recruiter,32000,2,4,2023-07-17
+107,Rohan,IT,Developer,58000,4,4,2021-04-11
+108,Pooja,Finance,Analyst,45000,3,3,2022-11-22
+109,Vikram,Sales,Sales Manager,65000,6,5,2020-02-01
+110,Anjali,IT,Data Analyst,62000,4,5,2021-09-15
+111,Karan,Marketing,Marketing Executive,38000,2,3,2023-05-08
+112,Meera,HR,HR Manager,60000,5,5,2019-10-10
+113,Arjun,Finance,Accountant,48000,4,4,2020-12-12
+114,Simran,Sales,Sales Executive,34000,2,3,2024-03-18
+115,Varun,IT,Developer,57000,3,4,2022-06-25
+116,Isha,Marketing,Marketing Manager,62000,5,5,2020-07-07
+117,Nikhil,IT,Data Analyst,59000,4,4,2021-01-19
+118,Riya,HR,Recruiter,33000,2,3,2023-09-14
+119,Manish,Finance,Finance Manager,70000,7,5,2019-05-20
+120,Kavya,Marketing,Marketing Executive,40000,3,4,2022-04-16
