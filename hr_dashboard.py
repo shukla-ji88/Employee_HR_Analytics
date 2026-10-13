@@ -16,6 +16,10 @@ st.set_page_config(
 )
 
 
+# Step 22: Manual dashboard refresh
+if st.sidebar.button("🔄 Refresh Dashboard"):
+    st.rerun()
+
 
 # 2. Load employee data and initialize database for deployment
 
@@ -162,6 +166,122 @@ except (sqlite3.Error, pd.errors.DatabaseError, OSError, ValueError) as e:
 st.title("📊 HR Analytics Dashboard")
 st.caption("Employee Overview | Salary Analysis | Performance Insights")
 st.divider()
+
+
+# STEP 22: DATA QUALITY CHECKS
+
+with st.expander("🔎 Data Quality Checks", expanded=False):
+
+    # 1. Missing and blank values
+    missing_counts = df[required_columns].isna().sum()
+
+    blank_counts = (
+        df[required_columns]
+        .astype("string")
+        .apply(lambda col: col.str.strip().eq("").sum())
+    )
+
+    missing_report = (
+        missing_counts + blank_counts
+    ).rename_axis("Column").reset_index(
+        name="Missing_or_Blank"
+    )
+
+    total_missing = int(missing_report["Missing_or_Blank"].sum())
+
+    # 2. Duplicate records and employee IDs
+    duplicate_rows = int(df.duplicated().sum())
+
+    duplicate_ids = int(
+        df["EmployeeID"].duplicated().sum()
+    )
+
+    # 3. Validate salary values
+    salary_values = pd.to_numeric(
+        df["Salary"], errors="coerce"
+    )
+
+    invalid_salary = int(
+        (salary_values.isna() | (salary_values <= 0)).sum()
+    )
+
+    # 4. Validate experience
+    experience_values = pd.to_numeric(
+        df["ExperienceYears"], errors="coerce"
+    )
+
+    invalid_experience = int(
+        (
+            experience_values.isna()
+            | (experience_values < 0)
+        ).sum()
+    )
+
+    # 5. Validate performance rating: expected 1 to 5
+    rating_values = pd.to_numeric(
+        df["PerformanceRating"], errors="coerce"
+    )
+
+    invalid_ratings = int(
+        (
+            rating_values.isna()
+            | ~rating_values.between(1, 5)
+        ).sum()
+    )
+
+    # 6. Validate joining dates
+    parsed_dates = pd.to_datetime(
+        df["JoiningDate"], errors="coerce"
+    )
+
+    nonblank_dates = (
+        df["JoiningDate"].notna()
+        & df["JoiningDate"].astype(str).str.strip().ne("")
+    )
+
+    invalid_joining_dates = int(
+        (nonblank_dates & parsed_dates.isna()).sum()
+    )
+
+    # 7. Display quality metrics
+    q1, q2, q3, q4 = st.columns(4)
+
+    q1.metric("Missing / Blank Cells", total_missing)
+    q2.metric("Duplicate Employee IDs", duplicate_ids)
+    q3.metric("Invalid Salaries", invalid_salary)
+    q4.metric("Invalid Ratings", invalid_ratings)
+
+    st.markdown("**Column-wise Missing Values**")
+    st.dataframe(
+        missing_report,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # 8. Quality status
+    quality_ok = (
+        total_missing == 0
+        and duplicate_rows == 0
+        and duplicate_ids == 0
+        and invalid_salary == 0
+        and invalid_experience == 0
+        and invalid_ratings == 0
+        and invalid_joining_dates == 0
+    )
+
+    if quality_ok:
+        st.success("Data quality checks passed!")
+    else:
+        st.warning(
+            "Data quality issues detected. "
+            "Review the counts before drawing business conclusions."
+        )
+
+    st.caption(
+        "These are basic automated checks. "
+        "They do not guarantee that every business value is correct."
+    )
+
 
 # -------------------------------
 # 4. Sidebar filters
