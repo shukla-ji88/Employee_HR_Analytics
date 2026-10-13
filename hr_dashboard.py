@@ -5,6 +5,7 @@ import plotly.express as px
 from pathlib import Path
 from io import BytesIO
 import sqlite3
+from pathlib import Path
 # -------------------------------
 # 1. Page configuration
 # -------------------------------
@@ -15,38 +16,144 @@ st.set_page_config(
 )
 
 
-# 2. Load employee data from SQLite database
-DB_PATH = Path(__file__).parent / "hr_analytics.db"
 
-if not DB_PATH.exists():
-    st.error("SQLite database nahi mili: hr_analytics.db")
-    st.info(
-        "Terminal mein pehle python sql_analysis.py run karo."
-    )
+# 2. Load employee data and initialize database for deployment
+
+BASE_DIR = Path(__file__).resolve().parent
+CSV_PATH = BASE_DIR / "employee_data.csv"
+DB_PATH = BASE_DIR / "hr_analytics.db"
+
+required_columns = [
+    "EmployeeID",
+    "Name",
+    "Department",
+    "Position",
+    "Salary",
+    "ExperienceYears",
+    "PerformanceRating",
+    "JoiningDate"
+]
+
+if not CSV_PATH.exists():
+    st.error("employee_data.csv repository mein nahi mili.")
     st.stop()
 
 try:
+    source_df = pd.read_csv(CSV_PATH)
+
+    missing_columns = [
+        column for column in required_columns
+        if column not in source_df.columns
+    ]
+
+    if missing_columns:
+        st.error(f"CSV mein columns missing hain: {missing_columns}")
+        st.stop()
+
     with sqlite3.connect(DB_PATH) as conn:
+
+        # Check existing database tables
+        table_names = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+
+        # Table 1: Employee data
+        if "employee_data" not in table_names:
+            source_df.to_sql(
+                "employee_data",
+                conn,
+                if_exists="replace",
+                index=False
+            )
+
+        # Table 2: Department information
+        if "department_info" not in table_names:
+            department_data = pd.DataFrame({
+                "Department": [
+                    "IT", "HR", "Finance", "Sales",
+                    "Marketing", "Legal"
+                ],
+                "CostCenter": [
+                    "IT-101", "HR-102", "FIN-103",
+                    "SAL-104", "MKT-105", "LEG-106"
+                ],
+                "DepartmentType": [
+                    "Technology", "People Operations",
+                    "Finance", "Revenue", "Marketing",
+                    "Legal and Compliance"
+                ]
+            })
+
+            department_data.to_sql(
+                "department_info",
+                conn,
+                if_exists="replace",
+                index=False
+            )
+
+        # Table 3: Simulated employee lifecycle demo data
+        if "employee_lifecycle" not in table_names:
+
+            lifecycle_df = pd.read_sql_query(
+                """
+                SELECT
+                    EmployeeID,
+                    Name,
+                    Department,
+                    Position,
+                    Salary,
+                    JoiningDate
+                FROM employee_data
+                """,
+                conn
+            )
+
+            # Demo exits only; these are not real employee records.
+            EXIT_DATES = {
+                104: "2024-01-15",
+                108: "2024-03-20",
+                112: "2024-06-30",
+                116: "2024-08-15",
+                120: "2024-11-10"
+            }
+
+            lifecycle_df["EmploymentStatus"] = (
+                lifecycle_df["EmployeeID"].apply(
+                    lambda employee_id:
+                        "Exited"
+                        if int(employee_id) in EXIT_DATES
+                        else "Active"
+                )
+            )
+
+            lifecycle_df["ExitDate"] = (
+                lifecycle_df["EmployeeID"].map(EXIT_DATES)
+            )
+
+            lifecycle_df.to_sql(
+                "employee_lifecycle",
+                conn,
+                if_exists="replace",
+                index=False
+            )
+
+        # Load data after all required tables exist
         df = pd.read_sql_query(
             "SELECT * FROM employee_data",
             conn
         )
 
-except (sqlite3.Error, pd.errors.DatabaseError) as e:
-    st.error(f"Database se data load nahi hua: {e}")
-    st.info("python sql_analysis.py run karke database dobara banao.")
-    st.stop()
+    if not all(column in df.columns for column in required_columns):
+        st.error("Database mein required employee columns missing hain.")
+        st.stop()
 
-st.success("Employee data SQLite database se load hua!")
+    st.success("Employee data aur database tables successfully loaded!")
 
-# Check required columns
-required_columns = [
-    "EmployeeID", "Name", "Department", "Position",
-    "Salary", "ExperienceYears", "PerformanceRating"
-]
-
-if not all(column in df.columns for column in required_columns):
-    st.error("Database mein required columns missing hain.")
+except (sqlite3.Error, pd.errors.DatabaseError, OSError, ValueError) as e:
+    st.error(f"Database initialization/load error: {e}")
     st.stop()
 
 # -------------------------------
