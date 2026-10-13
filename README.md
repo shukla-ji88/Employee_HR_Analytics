@@ -6,6 +6,35 @@ A practice HR Analytics project built using Python, Pandas, SQL and Streamlit.
 It analyzes employee salary, department distribution, hiring trends and
 performance data using an interactive dashboard and Excel reports.
 
+
+## Live Demo
+
+**Try the HR Analytics Dashboard:**  
+[Open Dashboard](https://employee-hr-analytics-demo.streamlit.app/)
+
+> Note: Replace the URL above with your actual Streamlit URL
+> after saving your app settings.
+
+## Project Highlights
+
+- Interactive employee analytics dashboard
+- Department-wise salary and employee analysis
+- SQL queries, aggregations and JOIN operations
+- Monthly hiring trends
+- Simulated employee lifecycle analysis
+- Excel reports with multiple worksheets and charts
+
+## Technology Stack
+
+Python | Pandas | SQLite | SQL | Streamlit | Plotly | Excel
+
+## Data Disclaimer
+
+This is a learning project using sample employee records.
+Employee exit data is simulated for demonstration purposes
+and does not represent real company attrition.
+
+
 ## Technology Stack
 - Python
 - Pandas
