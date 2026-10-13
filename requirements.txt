@@ -1,10 +1,6 @@
 
-
 streamlit
 pandas
 plotly
 matplotlib
 openpyxl
-
-
-
