@@ -611,7 +611,7 @@ with st.expander("👥 Employee Management — Add / Update / Delete",
                         )
                         st.rerun()
 
-                        except sqlite3.Error as e:
+                    except sqlite3.Error as e:
                         st.error(f"Employee update nahi hua: {e}")
 
     # -----------------------------------------
