@@ -7,6 +7,8 @@ from pathlib import Path
 from io import BytesIO
 import sqlite3
 from pathlib import Path
+import datetime as dt
+from db_utils import ensure_indexes, table_exists
 
 # -------------------------------
 # 1. Page configuration
@@ -171,6 +173,493 @@ st.caption("Employee Overview | Salary Analysis | Performance Insights")
 st.divider()
 
 
+# ============================================
+# EMPLOYEE MANAGEMENT: ADD / UPDATE / DELETE
+# ============================================
+
+def ensure_department_metadata(conn, department):
+    """Add metadata if a new department is entered."""
+    if not table_exists(conn, "department_info"):
+        return
+
+    exists = conn.execute(
+        "SELECT 1 FROM department_info WHERE Department = ? LIMIT 1",
+        (department,)
+    ).fetchone()
+
+    if not exists:
+        slug = "".join(
+            char for char in department.upper() if char.isalnum()
+        )[:10] or "OTHER"
+
+        conn.execute(
+            """
+            INSERT INTO department_info
+                (Department, CostCenter, DepartmentType)
+            VALUES (?, ?, ?)
+            """,
+            (department, f"AUTO-{slug}", "User Defined")
+        )
+
+
+def sync_lifecycle_employee(conn, employee, create_if_missing=True):
+    """Keep lifecycle employee details synchronized."""
+    if not table_exists(conn, "employee_lifecycle"):
+        return
+
+    employee_id = employee["EmployeeID"]
+
+    exists = conn.execute(
+        "SELECT 1 FROM employee_lifecycle WHERE EmployeeID = ? LIMIT 1",
+        (employee_id,)
+    ).fetchone()
+
+    if exists:
+        # Preserve existing EmploymentStatus and ExitDate.
+        conn.execute(
+            """
+            UPDATE employee_lifecycle
+            SET Name = ?,
+                Department = ?,
+                Position = ?,
+                Salary = ?,
+                JoiningDate = ?
+            WHERE EmployeeID = ?
+            """,
+            (
+                employee["Name"],
+                employee["Department"],
+                employee["Position"],
+                employee["Salary"],
+                employee["JoiningDate"],
+                employee_id
+            )
+        )
+    elif create_if_missing:
+        conn.execute(
+            """
+            INSERT INTO employee_lifecycle
+                (EmployeeID, Name, Department, Position, Salary,
+                 JoiningDate, EmploymentStatus, ExitDate)
+            VALUES (?, ?, ?, ?, ?, ?, 'Active', NULL)
+            """,
+            (
+                employee["EmployeeID"],
+                employee["Name"],
+                employee["Department"],
+                employee["Position"],
+                employee["Salary"],
+                employee["JoiningDate"]
+            )
+        )
+
+
+if "employee_crud_message" in st.session_state:
+    st.success(st.session_state.pop("employee_crud_message"))
+
+crud_ids = (
+    pd.to_numeric(df["EmployeeID"], errors="coerce")
+    .dropna()
+    .astype(int)
+    .unique()
+    .tolist()
+)
+
+crud_name_map = {
+    int(row["EmployeeID"]): str(row["Name"])
+    for _, row in df.iterrows()
+    if pd.notna(row["EmployeeID"])
+}
+
+with st.expander("👥 Employee Management — Add / Update / Delete",
+                 expanded=False):
+
+    add_tab, update_tab, delete_tab = st.tabs([
+        "➕ Add Employee",
+        "✏️ Update Employee",
+        "🗑️ Delete Employee"
+    ])
+
+    # -----------------------------------------
+    # ADD EMPLOYEE
+    # -----------------------------------------
+    with add_tab:
+
+        numeric_ids = pd.to_numeric(
+            df["EmployeeID"], errors="coerce"
+        ).dropna()
+
+        next_id = (
+            int(numeric_ids.max()) + 1
+            if not numeric_ids.empty else 101
+        )
+
+        with st.form("add_employee_form", clear_on_submit=True):
+
+            st.markdown("### Add a new employee")
+
+            new_id = st.number_input(
+                "Employee ID",
+                min_value=1,
+                value=next_id,
+                step=1
+            )
+
+            new_name = st.text_input("Employee Name")
+            new_department = st.text_input("Department")
+            new_position = st.text_input("Position")
+
+            new_salary = st.number_input(
+                "Salary (₹)",
+                min_value=1,
+                value=30000,
+                step=1000
+            )
+
+            new_experience = st.number_input(
+                "Experience (Years)",
+                min_value=0,
+                value=0,
+                step=1
+            )
+
+            new_rating = st.number_input(
+                "Performance Rating (1–5)",
+                min_value=1,
+                max_value=5,
+                value=3,
+                step=1
+            )
+
+            new_joining_date = st.date_input(
+                "Joining Date",
+                value=dt.date.today()
+            )
+
+            add_submitted = st.form_submit_button(
+                "Add Employee",
+                type="primary",
+                use_container_width=True
+            )
+
+        if add_submitted:
+            name = new_name.strip()
+            department = new_department.strip()
+            position = new_position.strip()
+
+            if not name or not department or not position:
+                st.error(
+                    "Employee name, department aur position required hain."
+                )
+            else:
+                try:
+                    with sqlite3.connect(DB_PATH) as conn:
+
+                        duplicate = conn.execute(
+                            """
+                            SELECT 1 FROM employee_data
+                            WHERE EmployeeID = ?
+                            LIMIT 1
+                            """,
+                            (int(new_id),)
+                        ).fetchone()
+
+                        if duplicate:
+                            st.error(
+                                f"Employee ID {int(new_id)} already exists."
+                            )
+                        else:
+                            employee = {
+                                "EmployeeID": int(new_id),
+                                "Name": name,
+                                "Department": department,
+                                "Position": position,
+                                "Salary": int(new_salary),
+                                "ExperienceYears": int(new_experience),
+                                "PerformanceRating": int(new_rating),
+                                "JoiningDate": new_joining_date.isoformat()
+                            }
+
+                            conn.execute(
+                                """
+                                INSERT INTO employee_data
+                                    (EmployeeID, Name, Department, Position,
+                                     Salary, ExperienceYears,
+                                     PerformanceRating, JoiningDate)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                """,
+                                (
+                                    employee["EmployeeID"],
+                                    employee["Name"],
+                                    employee["Department"],
+                                    employee["Position"],
+                                    employee["Salary"],
+                                    employee["ExperienceYears"],
+                                    employee["PerformanceRating"],
+                                    employee["JoiningDate"]
+                                )
+                            )
+
+                            ensure_department_metadata(conn, department)
+                            sync_lifecycle_employee(conn, employee)
+
+                            st.session_state["employee_crud_message"] = (
+                                f"Employee {name} added successfully."
+                            )
+                            st.rerun()
+
+                except sqlite3.Error as e:
+                    st.error(f"Employee add nahi hua: {e}")
+
+    # -----------------------------------------
+    # UPDATE EMPLOYEE
+    # -----------------------------------------
+    with update_tab:
+
+        if not crud_ids:
+            st.info("Update karne ke liye koi employee available nahi hai.")
+
+        else:
+            selected_update_id = st.selectbox(
+                "Select employee to update",
+                options=sorted(crud_ids),
+                format_func=lambda emp_id: (
+                    f"{emp_id} — {crud_name_map.get(emp_id, 'Unknown')}"
+                ),
+                key="update_employee_selector"
+            )
+
+            current_rows = df.loc[
+                pd.to_numeric(df["EmployeeID"], errors="coerce")
+                == selected_update_id
+            ]
+
+            current = current_rows.iloc[0]
+
+            parsed_date = pd.to_datetime(
+                current["JoiningDate"], errors="coerce"
+            )
+
+            date_default = (
+                parsed_date.date()
+                if pd.notna(parsed_date)
+                else dt.date.today()
+            )
+
+            current_salary = (
+                int(float(current["Salary"]))
+                if pd.notna(current["Salary"]) else 30000
+            )
+
+            current_experience = (
+                int(float(current["ExperienceYears"]))
+                if pd.notna(current["ExperienceYears"]) else 0
+            )
+
+            current_rating = (
+                int(float(current["PerformanceRating"]))
+                if pd.notna(current["PerformanceRating"]) else 3
+            )
+
+            with st.form(
+                f"update_employee_form_{selected_update_id}"
+            ):
+
+                st.markdown(f"### Update employee {selected_update_id}")
+
+                updated_name = st.text_input(
+                    "Employee Name",
+                    value=str(current["Name"]),
+                    key=f"update_name_{selected_update_id}"
+                )
+
+                updated_department = st.text_input(
+                    "Department",
+                    value=str(current["Department"]),
+                    key=f"update_department_{selected_update_id}"
+                )
+
+                updated_position = st.text_input(
+                    "Position",
+                    value=str(current["Position"]),
+                    key=f"update_position_{selected_update_id}"
+                )
+
+                updated_salary = st.number_input(
+                    "Salary (₹)",
+                    min_value=1,
+                    value=max(current_salary, 1),
+                    step=1000,
+                    key=f"update_salary_{selected_update_id}"
+                )
+
+                updated_experience = st.number_input(
+                    "Experience (Years)",
+                    min_value=0,
+                    value=max(current_experience, 0),
+                    step=1,
+                    key=f"update_experience_{selected_update_id}"
+                )
+
+                updated_rating = st.number_input(
+                    "Performance Rating (1–5)",
+                    min_value=1,
+                    max_value=5,
+                    value=min(max(current_rating, 1), 5),
+                    step=1,
+                    key=f"update_rating_{selected_update_id}"
+                )
+
+                updated_joining_date = st.date_input(
+                    "Joining Date",
+                    value=date_default,
+                    key=f"update_join_date_{selected_update_id}"
+                )
+
+                update_submitted = st.form_submit_button(
+                    "Save Employee Changes",
+                    type="primary",
+                    use_container_width=True
+                )
+
+            if update_submitted:
+                name = updated_name.strip()
+                department = updated_department.strip()
+                position = updated_position.strip()
+
+                if not name or not department or not position:
+                    st.error(
+                        "Employee name, department aur position required hain."
+                    )
+                else:
+                    try:
+                        employee = {
+                            "EmployeeID": int(selected_update_id),
+                            "Name": name,
+                            "Department": department,
+                            "Position": position,
+                            "Salary": int(updated_salary),
+                            "ExperienceYears": int(updated_experience),
+                            "PerformanceRating": int(updated_rating),
+                            "JoiningDate": updated_joining_date.isoformat()
+                        }
+
+                        with sqlite3.connect(DB_PATH) as conn:
+                            conn.execute(
+                                """
+                                UPDATE employee_data
+                                SET Name = ?,
+                                    Department = ?,
+                                    Position = ?,
+                                    Salary = ?,
+                                    ExperienceYears = ?,
+                                    PerformanceRating = ?,
+                                    JoiningDate = ?
+                                WHERE EmployeeID = ?
+                                """,
+                                (
+                                    employee["Name"],
+                                    employee["Department"],
+                                    employee["Position"],
+                                    employee["Salary"],
+                                    employee["ExperienceYears"],
+                                    employee["PerformanceRating"],
+                                    employee["JoiningDate"],
+                                    employee["EmployeeID"]
+                                )
+                            )
+
+                            ensure_department_metadata(conn, department)
+                            sync_lifecycle_employee(conn, employee)
+
+                        st.session_state["employee_crud_message"] = (
+                            f"Employee {name} updated successfully."
+                        )
+                        st.rerun()
+
+                    except sqlite3.Error as e:
+                        st.error(f"Employee update nahi hua: {e}")
+
+    # -----------------------------------------
+    # DELETE EMPLOYEE
+    # -----------------------------------------
+    with delete_tab:
+
+        if not crud_ids:
+            st.info("Delete karne ke liye koi employee available nahi hai.")
+
+        else:
+            selected_delete_id = st.selectbox(
+                "Select employee to delete",
+                options=sorted(crud_ids),
+                format_func=lambda emp_id: (
+                    f"{emp_id} — {crud_name_map.get(emp_id, 'Unknown')}"
+                ),
+                key="delete_employee_selector"
+            )
+
+            delete_name = crud_name_map.get(
+                selected_delete_id, "Unknown"
+            )
+
+            st.warning(
+                f"Employee {delete_name} (ID {selected_delete_id}) "
+                "will be permanently removed from this database."
+            )
+
+            with st.form(f"delete_employee_form_{selected_delete_id}"):
+
+                confirm_delete = st.checkbox(
+                    f"I confirm deleting {delete_name}",
+                    key=f"confirm_delete_{selected_delete_id}"
+                )
+
+                delete_submitted = st.form_submit_button(
+                    "Delete Employee",
+                    type="primary",
+                    use_container_width=True
+                )
+
+            if delete_submitted:
+                if not confirm_delete:
+                    st.error("Delete karne se pehle confirmation select karo.")
+
+                elif df["EmployeeID"].nunique() <= 1:
+                    st.error(
+                        "Dashboard chalane ke liye kam se kam "
+                        "ek employee record rehna chahiye."
+                    )
+
+                else:
+                    try:
+                        with sqlite3.connect(DB_PATH) as conn:
+                            conn.execute(
+                                """
+                                DELETE FROM employee_data
+                                WHERE EmployeeID = ?
+                                """,
+                                (int(selected_delete_id),)
+                            )
+
+                            if table_exists(conn, "employee_lifecycle"):
+                                conn.execute(
+                                    """
+                                    DELETE FROM employee_lifecycle
+                                    WHERE EmployeeID = ?
+                                    """,
+                                    (int(selected_delete_id),)
+                                )
+
+                        st.session_state["employee_crud_message"] = (
+                            f"Employee {delete_name} deleted successfully."
+                        )
+                        st.rerun()
+
+                    except sqlite3.Error as e:
+                        st.error(f"Employee delete nahi hua: {e}")
+
+
+
 # STEP 22: DATA QUALITY CHECKS
 
 with st.expander("🔎 Data Quality Checks", expanded=False):
@@ -194,7 +683,7 @@ with st.expander("🔎 Data Quality Checks", expanded=False):
 
     # 2. Duplicate records and employee IDs
     duplicate_rows = int(df.duplicated().sum())
-
+    
     duplicate_ids = int(
         df["EmployeeID"].duplicated().sum()
     )
