@@ -173,6 +173,16 @@ st.caption("Employee Overview | Salary Analysis | Performance Insights")
 st.divider()
 
 
+def reset_employee_filters():
+    """Reset filters after employee data changes."""
+    for key in (
+        "department_filter",
+        "position_filter",
+        "salary_filter",
+        "employee_search"
+    ):
+        st.session_state.pop(key, None)
+
 # ============================================
 # EMPLOYEE MANAGEMENT: ADD / UPDATE / DELETE
 # ============================================
@@ -353,6 +363,7 @@ with st.expander("👥 Employee Management — Add / Update / Delete",
                 )
             else:
                 try:
+                    employee_added = False
                     with sqlite3.connect(DB_PATH) as conn:
 
                         duplicate = conn.execute(
@@ -402,11 +413,14 @@ with st.expander("👥 Employee Management — Add / Update / Delete",
 
                             ensure_department_metadata(conn, department)
                             sync_lifecycle_employee(conn, employee)
+                            employee_added = True
 
-                            st.session_state["employee_crud_message"] = (
-                                f"Employee {name} added successfully."
-                            )
-                            st.rerun()
+                    if employee_added:
+                        reset_employee_filters()
+                        st.session_state["employee_crud_message"] = (
+                            f"Employee {name} added successfully."
+                        )
+                        st.rerun()       
 
                 except sqlite3.Error as e:
                     st.error(f"Employee add nahi hua: {e}")
@@ -544,8 +558,9 @@ with st.expander("👥 Employee Management — Add / Update / Delete",
                             "JoiningDate": updated_joining_date.isoformat()
                         }
 
+                        
                         with sqlite3.connect(DB_PATH) as conn:
-                            conn.execute(
+                            cursor = conn.execute(
                                 """
                                 UPDATE employee_data
                                 SET Name = ?,
@@ -569,11 +584,30 @@ with st.expander("👥 Employee Management — Add / Update / Delete",
                                 )
                             )
 
-                            ensure_department_metadata(conn, department)
+                            if cursor.rowcount != 1:
+                                raise sqlite3.Error(
+                                    "Employee ID database mein nahi mila."
+                                )
+
+                            ensure_department_metadata(
+                                conn, department
+                            )
                             sync_lifecycle_employee(conn, employee)
 
+                            saved_employee = conn.execute(
+                                """
+                                SELECT Name, Department, Salary
+                                FROM employee_data
+                                WHERE EmployeeID = ?
+                                """,
+                                (employee["EmployeeID"],)
+                            ).fetchone()
+
+                        reset_employee_filters()
+
                         st.session_state["employee_crud_message"] = (
-                            f"Employee {name} updated successfully."
+                            f"Employee {saved_employee[0]} updated successfully. "
+                            f"Salary: ₹{saved_employee[2]}"
                         )
                         st.rerun()
 
@@ -650,9 +684,11 @@ with st.expander("👥 Employee Management — Add / Update / Delete",
                                     (int(selected_delete_id),)
                                 )
 
+                        reset_employee_filters()
+                        
                         st.session_state["employee_crud_message"] = (
                             f"Employee {delete_name} deleted successfully."
-                        )
+                        )       
                         st.rerun()
 
                     except sqlite3.Error as e:
@@ -683,7 +719,7 @@ with st.expander("🔎 Data Quality Checks", expanded=False):
 
     # 2. Duplicate records and employee IDs
     duplicate_rows = int(df.duplicated().sum())
-    
+
     duplicate_ids = int(
         df["EmployeeID"].duplicated().sum()
     )
@@ -776,8 +812,8 @@ with st.expander("🔎 Data Quality Checks", expanded=False):
 
 
 # -------------------------------
-# 4. Sidebar filters
-# -------------------------------
+# 4. 
+# Sidebar filters
 st.sidebar.header("Filter Employees")
 
 departments = sorted(df["Department"].dropna().unique().tolist())
@@ -786,13 +822,15 @@ positions = sorted(df["Position"].dropna().unique().tolist())
 selected_departments = st.sidebar.multiselect(
     "Select Department",
     departments,
-    default=departments
+    default=departments,
+    key="department_filter"
 )
 
 selected_positions = st.sidebar.multiselect(
     "Select Position",
     positions,
-    default=positions
+    default=positions,
+    key="position_filter"
 )
 
 min_salary = int(df["Salary"].min())
@@ -803,10 +841,15 @@ salary_range = st.sidebar.slider(
     min_value=min_salary,
     max_value=max_salary,
     value=(min_salary, max_salary),
-    step=1000
+    step=1000,
+    key="salary_filter"
 )
 
-search_name = st.sidebar.text_input("Search Employee Name")
+search_name = st.sidebar.text_input(
+    "Search Employee Name",
+    key="employee_search"
+)
+
 
 # -------------------------------
 # 5. Apply filters
